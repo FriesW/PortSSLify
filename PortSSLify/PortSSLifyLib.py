@@ -11,15 +11,17 @@ class PortSSLify:
                  certfile_path = 'cert.pem', keyfile_path = 'key.pem',
                  bind = ('127.0.0.1', 443), forward = ('127.0.0.1', 80),
                  timeout = 60, max_active = 10, socket_queue = 2,
+                 ssl_protocol = ssl.PROTOCOL_TLSv1_2
                  debug_level = -1):
         self.bind_addr = bind
         self.forward_addr = forward
         self.active = threading.Semaphore(max_active)
         self.timeout = timeout
         self.queue_size = socket_queue
+        self.protocol = ssl_protocol
         _debug_level = debug_level
         
-        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER) #ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        self.context = ssl.SSLContext(self.protocol)
         self.context.load_cert_chain(certfile=certfile_path, keyfile=keyfile_path)
     
     def run(self):
