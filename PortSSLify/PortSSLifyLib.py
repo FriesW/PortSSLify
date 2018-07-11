@@ -81,6 +81,7 @@ class _connections:
 
 class _transfer(threading.Thread):
     def __init__(self, state):
+        threading.Thread.__init__(self)
         self.state = state
     
     def run_as(self, r, s):
