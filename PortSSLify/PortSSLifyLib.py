@@ -18,26 +18,25 @@ class PortSSLify:
                  max_active = 10, socket_queue = 2,
                  ssl_protocol = ssl.PROTOCOL_TLSv1_2,
                  debug_level = -1):
-        self.bind_addr = bind
-        self.forward_addr = forward
-        self.active = threading.Semaphore(max_active)
-        self.queue_size = socket_queue
-        self.protocol = ssl_protocol
+        self.__bind_addr = bind
+        self.__forward_addr = forward
+        self.__active = threading.Semaphore(max_active)
+        self.__queue_size = socket_queue
         global _debug_level
         _debug_level = debug_level
         
-        self.context = ssl.SSLContext(self.protocol)
+        self.context = ssl.SSLContext(ssl_protocol)
         self.context.load_cert_chain(certfile=certfile_path, keyfile=keyfile_path)
     
     def start(self):
         _pd(0, 'Starting up server...')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
-            sock.bind(self.bind_addr)
-            sock.listen(self.queue_size)
+            sock.bind(self.__bind_addr)
+            sock.listen(self.__queue_size)
             with self.context.wrap_socket(sock, server_side=True) as sslsock:
                 _pd(0, 'Server successfully started.')
                 while True:
-                    self.active.acquire()
+                    self.__active.acquire()
                     addr = "'connection failure'"
                     ibc = None
                     obc = None
@@ -45,9 +44,9 @@ class PortSSLify:
                         ibc, addr = sslsock.accept()
                         _pd(2, 'Connection from client', addr)
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-                        obc.connect(self.forward_addr)
-                        _pd(3, 'Success connecting to', self.forward_addr)
-                        conns = _connections(ibc, obc, self.active.release)
+                        obc.connect(self.__forward_addr)
+                        _pd(3, 'Success connecting to', self.__forward_addr)
+                        conns = _connections(ibc, obc, self.__active.release)
                         _send(conns).start()
                         _recv(conns).start()
                         _pd(5, 'Success building bridge.')
@@ -61,7 +60,7 @@ class PortSSLify:
                             try: obc.shutdown(socket.SHUT_RDWR)
                             except: pass
                             obc.close()
-                        self.active.release()
+                        self.__active.release()
 
     
 class _connections:
@@ -69,7 +68,7 @@ class _connections:
         self.ibc = inbound_conn
         self.obc = outbound_conn
         self.id = "'"+str(uuid.uuid4())[:8]+"'"
-        self.ext_method = call_on_completion
+        self.__ext_method = call_on_completion
         self.__exit_lock = threading.Lock()
         _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
     
@@ -83,15 +82,15 @@ class _connections:
         except: _pd(4, 'error during \'obc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
         self.ibc.close()
         self.obc.close()
-        if self.ext_method != None:
-            self.ext_method()
+        if self.__ext_method != None:
+            self.__ext_method()
 
 
 class _transfer(threading.Thread):
     def __init__(self, state):
         threading.Thread.__init__(self)
-        self.state = state
-        self.name = 'TransferThread-conn' + self.state.id + '-mode\'' + type(self).__name__ + "'"
+        self._state = state
+        self.name = 'TransferThread-conn' + self._state.id + '-mode\'' + type(self).__name__ + "'"
     
     def run_as(self, r, s):
         try:
@@ -101,13 +100,13 @@ class _transfer(threading.Thread):
                 data = r.recv(1024)
         finally:
             _pd(3, 'Exiting', id=self.name)
-            self.state.exit()
+            self._state.exit()
 
 
 class _send(_transfer):
     def run(self):
-        self.run_as(self.state.ibc, self.state.obc)
+        self.run_as(self._state.ibc, self._state.obc)
 
 class _recv(_transfer):
     def run(self):
-        self.run_as(self.state.obc, self.state.ibc)
+        self.run_as(self._state.obc, self._state.ibc)
