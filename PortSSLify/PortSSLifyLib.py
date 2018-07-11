@@ -37,58 +37,64 @@ class PortSSLify:
                         _pd(1, 'Connection from', addr)
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
                         obc.connect(self.forward_addr)
-                        conns = __connections(ibc, obc, self.timeout, self.active.release)
-                        __send(conns).start()
-                        __recv(conns).start()
+                        conns = _connections(ibc, obc, self.timeout, self.active.release)
+                        _send(conns).start()
+                        _recv(conns).start()
                     except:
+                        try: ibc.shutdown(socket.SHUT_RDWR)
+                        finally: pass
+                        try: obc.shutdown(socket.SHUT_RDWR)
+                        finally: pass
+                        ibc.close()
+                        obc.close()
                         self.active.release()
 
     
-    class __connections:
-        def __init__(self, inbound_conn, outbound_conn, timeout = 60, call_on_completion = None):
-            self.ibc = inbound_conn
-            self.obc = outbound_conn
-            self.ibc.settimeout(timeout)
-            self.obc.settimeout(timeout)
-            self.ext_method = call_on_completion
-            self.__s = 0
-        
-        def status(self):
-            return self.__s == 0
-        
-        def exit(self, close_recv, close_send):
-            close_recv.shutdown(socket.SHUT_RD)
-            close_send.shutdown(socket.SHUT_WR)
-            self.__s += 1
-            if self.__s == 2:
-                self.ibc.close()
-                self.obc.close()
-                if self.ext_method != None:
-                    self.ext_method()
-        
+class _connections:
+    def __init__(self, inbound_conn, outbound_conn, timeout = 60, call_on_completion = None):
+        self.ibc = inbound_conn
+        self.obc = outbound_conn
+        self.ibc.settimeout(timeout)
+        self.obc.settimeout(timeout)
+        self.ext_method = call_on_completion
+        self.__s = 0
     
-    class __transfer(threading.Thread):
-        def __init__(self, state):
-            self.state = state
-        
-        def run_as(self, r, s):
-            def recv():
-                while self.state.status():
-                    try: return r.recv(1024)
-                    except socket.timeout: pass
-            try:
+    def status(self):
+        return self.__s == 0
+    
+    def exit(self, close_recv, close_send):
+        close_recv.shutdown(socket.SHUT_RD)
+        close_send.shutdown(socket.SHUT_WR)
+        self.__s += 1
+        if self.__s == 2:
+            self.ibc.close()
+            self.obc.close()
+            if self.ext_method != None:
+                self.ext_method()
+
+
+class _transfer(threading.Thread):
+    def __init__(self, state):
+        self.state = state
+    
+    def run_as(self, r, s):
+        def recv():
+            while self.state.status():
+                try: return r.recv(1024)
+                except socket.timeout: pass
+        try:
+            data = recv()
+            while data:
+                s.sendall(data)
                 data = recv()
-                while data:
-                    s.sendall(data)
-                    data = recv()
-            finally:
-                self.state.exit(r, s)
-                
-    
-    class __send(__transfer):
-        def run(self):
-            self.run_as(self.state.ibc, self.state.obc)
-    
-    class __recv(__transfer):
-        def run(self):
-            self.run_as(self.state.obc, self.state.ibc)
+        finally:
+            self.state.exit(r, s)
+
+
+class _send(_transfer):
+    def run(self):
+        self.run_as(self.state.ibc, self.state.obc)
+
+class _recv(_transfer):
+    def run(self):
+        self.run_as(self.state.obc, self.state.ibc)
