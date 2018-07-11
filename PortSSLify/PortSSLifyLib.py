@@ -39,8 +39,10 @@ class PortSSLify:
                 _pd(0, 'Server successfully started.')
                 while True:
                     self.active.acquire()
+                    addr = "'connection failure'"
+                    ibc = None
+                    obc = None
                     try:
-                        addr = "'connection failure'"
                         ibc, addr = sslsock.accept()
                         _pd(2, 'Connection from client', addr)
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
@@ -52,12 +54,14 @@ class PortSSLify:
                         _pd(5, 'Success building bridge.')
                     except Exception as e:
                         _pd(1, 'Building bridge for client', addr, 'encountered error:', repr(e))
-                        try: ibc.shutdown(socket.SHUT_RDWR)
-                        finally: pass
-                        try: obc.shutdown(socket.SHUT_RDWR)
-                        finally: pass
-                        ibc.close()
-                        obc.close()
+                        if ibc != None:
+                            try: ibc.shutdown(socket.SHUT_RDWR)
+                            except: pass
+                            ibc.close()
+                        if obc != None:
+                            try: obc.shutdown(socket.SHUT_RDWR)
+                            except: pass
+                            obc.close()
                         self.active.release()
 
     
