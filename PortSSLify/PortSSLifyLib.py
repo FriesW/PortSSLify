@@ -23,6 +23,7 @@ class PortSSLify:
         self.active = threading.Semaphore(max_active)
         self.queue_size = socket_queue
         self.protocol = ssl_protocol
+        global _debug_level
         _debug_level = debug_level
         
         self.context = ssl.SSLContext(self.protocol)
