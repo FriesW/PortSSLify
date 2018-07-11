@@ -46,9 +46,9 @@ class PortSSLify:
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
                         obc.connect(self.__forward_addr)
                         _pd(3, 'Success connecting to', self.__forward_addr)
-                        conns = _connections(ibc, obc, self.__active.release)
-                        _send(conns).start()
-                        _recv(conns).start()
+                        conns = self.__connections(ibc, obc, self.__active.release)
+                        self.__send(conns).start()
+                        self.__recv(conns).start()
                         _pd(5, 'Success building bridge.')
                     except Exception as e:
                         _pd(1, 'Building bridge for client', addr, 'encountered error:', repr(e))
@@ -63,50 +63,50 @@ class PortSSLify:
                         self.__active.release()
 
     
-class _connections:
-    def __init__(self, inbound_conn, outbound_conn, call_on_completion = None):
-        self.ibc = inbound_conn
-        self.obc = outbound_conn
-        self.id = "'"+str(uuid.uuid4())[:8]+"'"
-        self.__ext_method = call_on_completion
-        self.__exit_lock = threading.Lock()
-        _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
-    
-    def exit(self):
-        if not self.__exit_lock.acquire(False):
-            return
-        _pd(2, 'Closing connection', id=self.id)
-        try: self.ibc.shutdown(socket.SHUT_RDWR)
-        except: _pd(4, 'error during \'ibc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
-        try: self.obc.shutdown(socket.SHUT_RDWR)
-        except: _pd(4, 'error during \'obc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
-        self.ibc.close()
-        self.obc.close()
-        if self.__ext_method != None:
-            self.__ext_method()
+    class __connections:
+        def __init__(self, inbound_conn, outbound_conn, call_on_completion = None):
+            self.ibc = inbound_conn
+            self.obc = outbound_conn
+            self.id = "'"+str(uuid.uuid4())[:8]+"'"
+            self.__ext_method = call_on_completion
+            self.__exit_lock = threading.Lock()
+            _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
+        
+        def exit(self):
+            if not self.__exit_lock.acquire(False):
+                return
+            _pd(2, 'Closing connection', id=self.id)
+            try: self.ibc.shutdown(socket.SHUT_RDWR)
+            except: _pd(4, 'error during \'ibc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
+            try: self.obc.shutdown(socket.SHUT_RDWR)
+            except: _pd(4, 'error during \'obc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
+            self.ibc.close()
+            self.obc.close()
+            if self.__ext_method != None:
+                self.__ext_method()
 
 
-class _transfer(threading.Thread):
-    def __init__(self, state):
-        threading.Thread.__init__(self)
-        self._state = state
-        self.name = 'TransferThread-conn' + self._state.id + '-mode\'' + type(self).__name__ + "'"
-    
-    def run_as(self, r, s):
-        try:
-            data = r.recv(1024)
-            while data:
-                s.sendall(data)
+    class __transfer(threading.Thread):
+        def __init__(self, state):
+            threading.Thread.__init__(self)
+            self._state = state
+            self.name = 'TransferThread-conn' + self._state.id + '-mode\'' + type(self).__name__ + "'"
+        
+        def run_as(self, r, s):
+            try:
                 data = r.recv(1024)
-        finally:
-            _pd(3, 'Exiting', id=self.name)
-            self._state.exit()
+                while data:
+                    s.sendall(data)
+                    data = r.recv(1024)
+            finally:
+                _pd(3, 'Exiting', id=self.name)
+                self._state.exit()
 
 
-class _send(_transfer):
-    def run(self):
-        self.run_as(self._state.ibc, self._state.obc)
+    class __send(__transfer):
+        def run(self):
+            self.run_as(self._state.ibc, self._state.obc)
 
-class _recv(_transfer):
-    def run(self):
-        self.run_as(self._state.obc, self._state.ibc)
+    class __recv(__transfer):
+        def run(self):
+            self.run_as(self._state.obc, self._state.ibc)
