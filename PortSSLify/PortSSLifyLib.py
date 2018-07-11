@@ -1,9 +1,14 @@
 import socket, ssl, threading, time
 
 _debug_level = -1
-def _pd(dl, *args):
+def _pd(dl, *args, **kwargs):
     if _debug_level > dl or _debug_level < 0:
-        print( time.strftime('%x %X %Z :: ') + ' '.join([str(e) for e in args]) )
+        o = ''
+        o += time.strftime('%x %X %Z :: ')
+        if kwargs.get('id'):
+            o += str(kwargs.get('id')) + ' :: '
+        o += ' '.join([str(e) for e in args])
+        print( o )
 
 class PortSSLify:
     
@@ -29,7 +34,7 @@ class PortSSLify:
         _pd(0, 'Starting up server...')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
             sock.bind(self.bind_addr)
-            sock.listen(self.queue_size)        
+            sock.listen(self.queue_size)
             with self.context.wrap_socket(sock, server_side=True) as sslsock:
                 _pd(0, 'Server successfully started.')
                 while True:
@@ -65,19 +70,19 @@ class _connections:
         self.id = "'"+str(object().__hash__())+"'"
         self.ext_method = call_on_completion
         self.__s = 0
-        _pd(2, 'Connection state object', self.id, 'made for client', self.ibc.getpeername())
+        _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
     
     def status(self):
         return self.__s == 0
     
     def exit(self, close_recv, close_send):
         try: close_recv.shutdown(socket.SHUT_RD)
-        except: _pd(4, 'Socket SHUT_RD error in exit for connection', self.id)
+        except: _pd(4, 'Socket SHUT_RD error in exit', id=self.id)
         try: close_send.shutdown(socket.SHUT_WR)
-        except: _pd(4, 'Socket SHUT_WR error in exit for connection', self.id)
+        except: _pd(4, 'Socket SHUT_WR error in exit', id=self.id)
         self.__s += 1
         if self.__s == 2:
-            _pd(2, 'Closing connection for connection', self.id)
+            _pd(2, 'Closing connection', id=self.id)
             self.ibc.close()
             self.obc.close()
             if self.ext_method != None:
@@ -88,6 +93,7 @@ class _transfer(threading.Thread):
     def __init__(self, state):
         threading.Thread.__init__(self)
         self.state = state
+        self.name = 'TransferThread-conn' + self.state.id + '-mode\'' + type(self).__name__ + "'"
     
     def run_as(self, r, s):
         def recv():
@@ -100,7 +106,7 @@ class _transfer(threading.Thread):
                 s.sendall(data)
                 data = recv()
         finally:
-            _pd(3, 'transfer thread', "'"+type(self).__name__+"'", 'is exiting for connection', self.state.id)
+            _pd(3, 'Exiting', id=self.name)
             self.state.exit(r, s)
 
 
