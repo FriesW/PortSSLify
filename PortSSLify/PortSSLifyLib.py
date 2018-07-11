@@ -69,8 +69,10 @@ class _connections:
         return self.__s == 0
     
     def exit(self, close_recv, close_send):
-        close_recv.shutdown(socket.SHUT_RD)
-        close_send.shutdown(socket.SHUT_WR)
+        try: close_recv.shutdown(socket.SHUT_RD)
+        except: _pd(4, 'Socket SHUT_RD error in exit for client', self.peer_name)
+        try: close_send.shutdown(socket.SHUT_WR)
+        except: _pd(4, 'Socket SHUT_WR error in exit for client', self.peer_name)
         self.__s += 1
         if self.__s == 2:
             _pd(2, 'Closing connection for client', self.status.peer_name)
