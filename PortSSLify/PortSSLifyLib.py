@@ -37,13 +37,14 @@ class PortSSLify:
                     try:
                         addr = "'connection failure'"
                         ibc, addr = sslsock.accept()
-                        _pd(2, 'Connection from', addr)
+                        _pd(2, 'Connection from client', addr)
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
                         obc.connect(self.forward_addr)
                         _pd(3, 'Success connecting to', self.forward_addr)
                         conns = _connections(ibc, obc, self.timeout, self.active.release)
                         _send(conns).start()
                         _recv(conns).start()
+                        _pd(5, 'Success building bridge.')
                     except Exception as e:
                         _pd(1, 'Building bridge for client', addr, 'encountered error:', repr(e))
                         try: ibc.shutdown(socket.SHUT_RDWR)
@@ -61,21 +62,22 @@ class _connections:
         self.obc = outbound_conn
         self.ibc.settimeout(timeout)
         self.obc.settimeout(timeout)
-        self.peer_name = self.ibc.getpeername()
+        self.id = "'"+str(object().__hash__())+"'"
         self.ext_method = call_on_completion
         self.__s = 0
+        _pd(2, 'Connection state object', self.id, 'made for client', self.ibc.getpeername())
     
     def status(self):
         return self.__s == 0
     
     def exit(self, close_recv, close_send):
         try: close_recv.shutdown(socket.SHUT_RD)
-        except: _pd(4, 'Socket SHUT_RD error in exit for client', self.peer_name)
+        except: _pd(4, 'Socket SHUT_RD error in exit for connection', self.id)
         try: close_send.shutdown(socket.SHUT_WR)
-        except: _pd(4, 'Socket SHUT_WR error in exit for client', self.peer_name)
+        except: _pd(4, 'Socket SHUT_WR error in exit for connection', self.id)
         self.__s += 1
         if self.__s == 2:
-            _pd(2, 'Closing connection for client', self.status.peer_name)
+            _pd(2, 'Closing connection for connection', self.id)
             self.ibc.close()
             self.obc.close()
             if self.ext_method != None:
@@ -98,7 +100,7 @@ class _transfer(threading.Thread):
                 s.sendall(data)
                 data = recv()
         finally:
-            _pd(3, 'transfer thread', "'"+type(self).__name__+"'", 'is exiting for client', self.status.peer_name)
+            _pd(3, 'transfer thread', "'"+type(self).__name__+"'", 'is exiting for connection', self.state.id)
             self.state.exit(r, s)
 
 
