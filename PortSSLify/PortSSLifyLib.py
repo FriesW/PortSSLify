@@ -1,4 +1,4 @@
-import socket, ssl, threading, time
+import socket, ssl, threading, time, uuid
 
 _debug_level = -1
 def _pd(dl, *args, **kwargs):
@@ -67,7 +67,7 @@ class _connections:
         self.obc = outbound_conn
         self.ibc.settimeout(timeout)
         self.obc.settimeout(timeout)
-        self.id = "'"+str(object().__hash__())+"'"
+        self.id = "'"+str(uuid.uuid4())[:8]+"'"
         self.ext_method = call_on_completion
         self.__s = 0
         _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
