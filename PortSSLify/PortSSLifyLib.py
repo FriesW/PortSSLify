@@ -61,6 +61,7 @@ class _connections:
         self.obc = outbound_conn
         self.ibc.settimeout(timeout)
         self.obc.settimeout(timeout)
+        self.peer_name = self.ibc.getpeername()
         self.ext_method = call_on_completion
         self.__s = 0
     
@@ -72,7 +73,7 @@ class _connections:
         close_send.shutdown(socket.SHUT_WR)
         self.__s += 1
         if self.__s == 2:
-            _pd(2, 'Closing connection for client', self.ibc.getpeername())
+            _pd(2, 'Closing connection for client', self.status.peer_name)
             self.ibc.close()
             self.obc.close()
             if self.ext_method != None:
@@ -95,7 +96,7 @@ class _transfer(threading.Thread):
                 s.sendall(data)
                 data = recv()
         finally:
-            _pd(3, 'transfer thread', "'"+type(self).__name__+"'", 'is exiting for client', self.state.ibc.getpeername())
+            _pd(3, 'transfer thread', "'"+type(self).__name__+"'", 'is exiting for client', self.status.peer_name)
             self.state.exit(r, s)
 
 
