@@ -17,14 +17,12 @@ class PortSSLify:
                  bind = ('127.0.0.1', 443), forward = ('127.0.0.1', 80),
                  max_active = 10, socket_queue = 2,
                  ssl_protocol = ssl.PROTOCOL_TLSv1_2,
-                 timeout = 10,
                  debug_level = -1):
         self.bind_addr = bind
         self.forward_addr = forward
         self.active = threading.Semaphore(max_active)
         self.queue_size = socket_queue
         self.protocol = ssl_protocol
-        self.timeout = timeout
         _debug_level = debug_level
         
         self.context = ssl.SSLContext(self.protocol)
@@ -48,7 +46,7 @@ class PortSSLify:
                         obc = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
                         obc.connect(self.forward_addr)
                         _pd(3, 'Success connecting to', self.forward_addr)
-                        conns = _connections(ibc, obc, self.timeout, self.active.release)
+                        conns = _connections(ibc, obc, self.active.release)
                         _send(conns).start()
                         _recv(conns).start()
                         _pd(5, 'Success building bridge.')
@@ -66,31 +64,26 @@ class PortSSLify:
 
     
 class _connections:
-    def __init__(self, inbound_conn, outbound_conn, timeout = 60, call_on_completion = None):
+    def __init__(self, inbound_conn, outbound_conn, call_on_completion = None):
         self.ibc = inbound_conn
         self.obc = outbound_conn
-        self.ibc.settimeout(timeout)
-        self.obc.settimeout(timeout)
         self.id = "'"+str(uuid.uuid4())[:8]+"'"
         self.ext_method = call_on_completion
-        self.__s = 0
+        self.__exit_lock = threading.Lock()
         _pd(2, 'Connection state object made for client', self.ibc.getpeername(), id=self.id)
     
-    def status(self):
-        return self.__s == 0
-    
-    def exit(self, close_recv, close_send):
-        try: close_recv.shutdown(socket.SHUT_RD)
-        except: _pd(4, 'Socket SHUT_RD error in exit', id=self.id)
-        try: close_send.shutdown(socket.SHUT_WR)
-        except: _pd(4, 'Socket SHUT_WR error in exit', id=self.id)
-        self.__s += 1
-        if self.__s == 2:
-            _pd(2, 'Closing connection', id=self.id)
-            self.ibc.close()
-            self.obc.close()
-            if self.ext_method != None:
-                self.ext_method()
+    def exit(self):
+        if not self.__exit_lock.acquire(False):
+            return
+        _pd(2, 'Closing connection', id=self.id)
+        try: self.ibc.shutdown(socket.SHUT_RDWR)
+        except: _pd(4, 'error during \'ibc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
+        try: self.obc.shutdown(socket.SHUT_RDWR)
+        except: _pd(4, 'error during \'obc.shutdown(socket.SHUT_RDWR)\' in exit', id=self.id)
+        self.ibc.close()
+        self.obc.close()
+        if self.ext_method != None:
+            self.ext_method()
 
 
 class _transfer(threading.Thread):
@@ -100,18 +93,14 @@ class _transfer(threading.Thread):
         self.name = 'TransferThread-conn' + self.state.id + '-mode\'' + type(self).__name__ + "'"
     
     def run_as(self, r, s):
-        def recv():
-            while self.state.status():
-                try: return r.recv(1024)
-                except socket.timeout: pass
         try:
-            data = recv()
+            data = r.recv(1024)
             while data:
                 s.sendall(data)
-                data = recv()
+                data = r.recv(1024)
         finally:
             _pd(3, 'Exiting', id=self.name)
-            self.state.exit(r, s)
+            self.state.exit()
 
 
 class _send(_transfer):
