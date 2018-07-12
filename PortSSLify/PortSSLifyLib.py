@@ -1,4 +1,4 @@
-import socket, ssl, threading, time, uuid
+import socket, ssl, threading, time, uuid, argparse, sys
 
 class PortSSLify:
     
@@ -114,3 +114,51 @@ class PortSSLify:
         conns = __connections(ibc, obc, self.__active.release)
         __send(conns).start()
         __recv(conns).start()
+
+
+
+if __name__ == '__main__':
+    
+    proto_pref = ['PROTOCOL_TLS_SERVER', 'PROTOCOL_TLSv1_2', 'PROTOCOL_TLSv1_1', 'PROTOCOL_TLSv1']
+    proto_list = []
+    for i in dir(ssl):
+        if i[:9] == 'PROTOCOL_':
+            proto_list.append(i)
+    proto_default = None
+    for p in proto_pref:
+        if p in proto_list:
+            proto_default = p
+            break
+    
+    p = argparse.ArgumentParser(description = 'PortSSLify: accepts an incoming SSL connection and sends out a plaintext connection. Wrap any socket with SSL!',
+        epilog = 'Supported SSL/TLS protocols: ' + ', '.join(proto_list))
+    p.add_argument('-cf', '--cert_file', dest='cert', type=str, default='cert.pem', metavar='PATH', help='File path to SSL certificate file (default: ./cert.pem)')
+    p.add_argument('-kf', '--key_file', dest='key', type=str, default='key.pem', metavar='PATH', help='File path to SSL key file (default ./key.pem)')
+    p.add_argument('-p', '--protocol', dest='proto', type=str, default=proto_default, metavar='PROTO', help='SSL/TLS protocol. See bottom for supported list.' +
+        (' (default: ' + proto_default + ')' if proto_default else ''), required = proto_default == None  )
+    p.add_argument('-bl', '--listen_addr', dest='bl', type=str, default='127.0.0.1', metavar='ADDR', help='Binding address on which to listen for incomming SSL connections (default: \'127.0.0.1\')')
+    p.add_argument('-pl', '--listen_port', dest='pl', type=int, default=443, metavar='N', help='Binding port on which to listen for incomming SSL connections (default: 443)')
+    p.add_argument('-bc', '--connect_addr', dest='bc', type=str, default='127.0.0.1', metavar='ADDR', help='Address for outgoing plain text connections (default: \'127.0.0.1\')')
+    p.add_argument('-pc', '--connect_port', dest='pc', type=int, default=80, metavar='N', help='Port for outoing plain text connections (default: 80)')
+    p.add_argument('-ac', '--active_conns', dest='ac', type=int, default=10, metavar='N', help='Max number of active connections (default: 10)')
+    p.add_argument('-v', '--verbose', dest='debug', type=int, nargs='?', const=-1, default=1, metavar='N', help='Verbosity of stdout. Only flag is max verbosity, 0 is none, increasing int is increasing verbosity (default: 1)' )
+    
+    a = p.parse_args()
+    
+    if a.proto not in proto_list:
+        sys.exit( p.format_usage() + ': error: the value for the following argument is invalid: -p/--protocol\nSupported values are: ' + ', '.join(proto_list) )
+    if a.proto in ['PROTOCOL_SSLv3', 'PROTOCOL_SSLv2']:
+        if 'Y' != input('WARNING: ' + a.proto + ' is insecure. Its use is highly discouraged.\nStill continue (Y/n)? '):
+            sys.exit()
+    proto = eval('ssl.'+a.proto)
+    
+    PortSSLify(
+        certfile_path = a.cert,
+        keyfile_path = a.key,
+        bind = (a.bl, a.pl),
+        forward = (a.bc, a.pc),
+        max_active = a.ac,
+        ssl_protocol = proto,
+        debug_level = a.debug
+    ).serve_forever()
+    
