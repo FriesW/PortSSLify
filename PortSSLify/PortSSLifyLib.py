@@ -29,6 +29,7 @@ class PortSSLify:
     def serve_forever(self):
         self.__pd(0, 'Starting up server...')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.__bind_addr)
             sock.listen(self.__queue_size)
             with self.context.wrap_socket(sock, server_side=True) as sslsock:
@@ -97,6 +98,8 @@ class PortSSLify:
                     while data:
                         s.sendall(data)
                         data = r.recv(1024)
+                except Exception as e:
+                    pd(4, 'Encountered error:', repr(e), id=self.name)
                 finally:
                     pd(3, 'Exiting', id=self.name)
                     self._state.exit()
