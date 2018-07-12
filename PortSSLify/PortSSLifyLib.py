@@ -7,7 +7,7 @@ class PortSSLify:
                  bind = ('127.0.0.1', 443), forward = ('127.0.0.1', 80),
                  max_active = 10, socket_queue = 2,
                  ssl_protocol = ssl.PROTOCOL_TLSv1_2,
-                 debug_level = -1):
+                 debug_level = 0):
         self.__bind_addr = bind
         self.__forward_addr = forward
         self.__active = threading.Semaphore(max_active)
