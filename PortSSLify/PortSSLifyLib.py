@@ -26,7 +26,7 @@ class PortSSLify:
             o += ' '.join([str(e) for e in args])
             print( o )
     
-    def start(self):
+    def serve_forever(self):
         self.__pd(0, 'Starting up server...')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
             sock.bind(self.__bind_addr)
