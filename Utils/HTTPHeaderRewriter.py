@@ -47,29 +47,57 @@ class HTTPHeaderRewriter:
                     
 
     def __handler(self, conn):
-        raw_headers = ''
-        leftover = None
-        while leftover == None:
+        headers = {}
+        
+        start_line = None
+        body = None
+        total_read = 0
+        leftover = ''
+        
+        while body == None:
+        
+            if total_read > 8000:
+                raise ClientMaxHeaderLengthError()
             data = r.recv(1024)
             if not data:
-                return #TODO exit
-            s = re.split('\n\n|\r\n\r\n', data, maxsplit = 1)
-            raw_headers += s[0]
-            if len(s) > 1:
-                leftover = s[1]
-            elif len(raw_headers) > 8000:
-                return #TODO exit
-                
+                raise ClientEarlyDisconnectError()
+            
+            total_read += len(data)
+            leftover += data
+            lines = re.split(r'\r?\n', leftover, maxsplit = 1)
+            if len(lines) == 1:
+                continue
+            
+            leftover = lines[1]
+            line = lines[0]
+            
+            if start_line == None:
+                start_line = line.split(' ')
+                if len(start_line) != 3:
+                    raise ClientInvalidHeaderError()
+                    map(str.strip, start_line)
+                continue
+            
+            if line[0] == '':
+                body = line[1]
+                continue
+            
+            header = line.split(':', 1)
+            if len(header) != 2:
+                raise ClientInvalidHeaderError()
+            headers[header[0].strip()] = header[1].strip()
         
-        rows = raw_headers.replace('\r', '').split('\n')
-        headers = {}
-        for r in rows[1:]:
-            k, v = r.split(':', 1)
-            headers[k.strip()] = v.strip()
+        #Do stuff...
         
-        start_line = rows[0].strip().split(' ')
-        if len(start_line) != 3:
-            return #TODO exit
-        method, target, version = start_line
-    
-        
+
+class ClientError(Exception):
+    pass
+
+class ClientEarlyDisconnectError(ClientError):
+    pass
+
+class ClientInvalidHeaderError(ClientError):
+    pass
+
+class ClientMaxHeaderLengthError(ClientError):
+    pass
