@@ -1,4 +1,6 @@
 import socket, threading, time, uuid, re
+from http.server import BaseHTTPRequestHandler
+from io import BytesIO
 
 class HTTPHeaderRewriter:
     
@@ -47,48 +49,49 @@ class HTTPHeaderRewriter:
                     
 
     def __handler(self, conn):
-        headers = {}
-        
-        start_line = None
-        body = None
+    
         total_read = 0
-        leftover = ''
+        body_beginning = None
+        message_headers = ''
         
-        while body == None:
-        
+        while body_beginning == None:
+            
             if total_read > 8000:
                 raise ClientMaxHeaderLengthError()
             data = r.recv(1024)
             if not data:
                 raise ClientEarlyDisconnectError()
-            
             total_read += len(data)
-            leftover += data
-            lines = re.split(r'\r?\n', leftover, maxsplit = 1)
+            
+            lines = re.split(r'(\r?\n){2}', data, maxsplit = 1)
+            message_headers += lines[0]
             if len(lines) == 1:
                 continue
             
-            leftover = lines[1]
-            line = lines[0]
-            
-            if start_line == None:
-                start_line = line.split(' ')
-                if len(start_line) != 3:
-                    raise ClientInvalidHeaderError()
-                    map(str.strip, start_line)
-                continue
-            
-            if line[0] == '':
-                body = line[1]
-                continue
-            
-            header = line.split(':', 1)
-            if len(header) != 2:
-                raise ClientInvalidHeaderError()
-            headers[header[0].strip()] = header[1].strip()
+            body_beginning = lines[1]
+        
+        request = HTTPRequest(message_headers)
+        
+        if request.error_code != None:
+            raise ClientInvalidHeaderError(request.error_code)
+        
+        headers = request.headers
+        cmd = request.command
+        path = request.path
+        ver = request.request_version
         
         #Do stuff...
-        
+
+# https://stackoverflow.com/questions/4685217/parse-raw-http-headers
+class HTTPRequest(BaseHTTPRequestHandler):
+    def __init__(sef, request_text):
+        self.rfile = BytesIO(request_text)
+        self.raw_requestline = self.rfile.readline()
+        self.error_code = self.error_message = None
+        self.parse_request()
+    def send_error(self, code, message):
+        self.error_code = code
+        self.error_message = message
 
 class ClientError(Exception):
     pass
@@ -97,7 +100,8 @@ class ClientEarlyDisconnectError(ClientError):
     pass
 
 class ClientInvalidHeaderError(ClientError):
-    pass
+    def __init__(self, error):
+        self.error_code = error
 
-class ClientMaxHeaderLengthError(ClientError):
+class ClientMaxHeaderLengthError(ClientError): #413 Entity Too Large
     pass
